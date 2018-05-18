@@ -21,11 +21,8 @@ struct Server {
 
 impl Handler for Server {
     fn on_open(&mut self, handshake: Handshake) -> Result<()> {
-        let id = std::str::from_utf8(&handshake.request.headers().get(7).unwrap().1).unwrap();
-        println!("{:?}", &handshake.request.headers());
-        println!("{:?}", self.out.token());
         match handshake.peer_addr {
-            Some(address) => self.nodes.borrow_mut().insert("rasmus".to_string(), self.out.token()),
+            Some(address) => self.nodes.borrow_mut().insert("ALIAS HERE".to_string(), self.out.token()),
             _ => None,
         };
 
@@ -56,9 +53,9 @@ impl Handler for Server {
     }
 
 
-//    fn on_error(&mut self, err: ws::Error) {
-//        println!("The server encountered an error: {:?}", err);
-//    }
+    fn on_error(&mut self, err: ws::Error) {
+        println!("The server encountered an error: {:?}", err);
+    }
 
 }
 
