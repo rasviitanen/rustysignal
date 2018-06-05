@@ -4,7 +4,8 @@ version = "0.0.1"
 authors = ["rasviitanen <rasviitanen@gmail.com>"]
 
 [dependencies]
-ws = "0.7.6"
-lazy_static = "1.0.0"
+ws = { git = "https://github.com/rasviitanen/ws-rs.git" }
+serde = "1.0"
+serde_derive = "1.0"
 serde_json = "1.0"
-mio = "0.6"
+lazy_static = "1.0"
