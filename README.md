@@ -14,6 +14,6 @@ Peers can be found by:
 To specify which type of method, specify it in your websocket send command in a field called `protocol`.
 
 ```
-var json_message = {protocol: "one-to-one", to: "you", "action": actiontype, "data": data};
+var json_message = { protocol: "one-to-one", to: "receiver_username", "action": actiontype, "data": data };
 ws.send(JSON.stringify(json_message));
 ```
