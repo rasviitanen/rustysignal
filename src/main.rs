@@ -30,10 +30,12 @@ impl Network {
         self.nodemap.borrow().get(username).and_then(|x|{ Some(x.clone() - 1) })
     }
     fn connection_id(&self, index: usize) -> Option<u32> {
-        self.nodes.borrow().get(index).and_then(|x| {x.upgrade()}.and_then(|x| {Some(x.borrow().sender.connection_id())}))
+        self.nodes.borrow().get(index).and_then(|x| {x.upgrade()}
+            .and_then(|x| {Some(x.borrow().sender.connection_id())}))
     }
     fn token(&self, index: usize) -> Option<ws::util::Token> {
-        self.nodes.borrow().get(index).and_then(|x| {x.upgrade()}.and_then(|x| {Some(x.borrow().sender.token())}))
+        self.nodes.borrow().get(index).and_then(|x| {x.upgrade()}.
+            and_then(|x| {Some(x.borrow().sender.token())}))
     }
 }
 
@@ -63,21 +65,53 @@ impl Handler for Server {
         let msg_string: &str = msg.as_text()?;
         // WARNING: PROTOCOL SPECIFIC
         let json_message: Value = serde_json::from_str(msg_string).unwrap();
-        let send_to = json_message["to"].as_str().unwrap();
-        let sender_index = self.network.borrow().index_of(send_to);
+        let protocol = match json_message["protocol"].as_str() {
+            Some(desired_protocol) => { Some(desired_protocol) },
+            _ => { None }
+        };
 
-        match sender_index {
-            Some(index) => {
-                self.node.borrow().sender.send_to(
-                        self.network.borrow().connection_id(index).unwrap(),
-                        self.network.borrow().token(index).unwrap(),
-                        msg_string
-                    )
-                //self.node.borrow().sender.broadcast(msg_string)
+        match protocol {
+            Some("one-to-all") => {
+                self.node.borrow().sender.broadcast(msg_string)
             },
-            _ => {
-                self.node.borrow().sender.send("No node with that name")
+            Some("one-to-self") => {
+                self.node.borrow().sender.send(msg_string)
+            },
+            Some("one-to-one") => {
+                match json_message["to"].as_str() {
+                    Some(receiver) => {
+                        let receiver_index = self.network.borrow().index_of(&receiver);
+                        match receiver_index {
+                            Some(index) => {
+                                self.node.borrow().sender.send_to(
+                                    self.network.borrow().connection_id(index).unwrap(),
+                                    self.network.borrow().token(index).unwrap(),
+                                    msg_string
+                                )
+                            },
+                            _ => {
+                                self.node.borrow().sender.send(
+                                    "No node with that name"
+                                )
+                            }
+                        }
+                    }
+                    _ => {
+                        self.node.borrow().sender.send(
+                            "No field 'to' provided"
+                        )
+                    }
+                }
+                
             }
+            _ => {
+                self.node.borrow().sender.send(
+                        "Invalid protocol, valid protocols include: 
+                            'one-to-one'
+                            'one-to-many'
+                            'one-to-all'"
+                    )
+                }
         }
     }
 
