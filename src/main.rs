@@ -64,7 +64,8 @@ impl Handler for Server {
     fn on_message(&mut self, msg: Message) -> Result<()> {
         let msg_string: &str = msg.as_text()?;
         // WARNING: PROTOCOL SPECIFIC
-        let json_message: Value = serde_json::from_str(msg_string).unwrap();
+        let json_message: Value = serde_json::from_str(msg_string).unwrap_or(Value::default());
+        
         let protocol = match json_message["protocol"].as_str() {
             Some(desired_protocol) => { Some(desired_protocol) },
             _ => { None }
