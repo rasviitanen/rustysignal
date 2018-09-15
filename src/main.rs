@@ -23,19 +23,22 @@ impl Network {
         self.nodes.borrow_mut().push(Rc::downgrade(&node));
         node
     }
-    fn add_username(&mut self, username: String) {
-        self.nodemap.borrow_mut().insert(username, self.nodes.borrow().len());
+    fn assign_user(&mut self, username: String) {
+        self.nodemap.borrow_mut().insert(username, self.nodes.borrow().len()-1);
     }
-    fn index_of(&self, username: &str) -> Option<usize> {
-        self.nodemap.borrow().get(username).and_then(|x|{ Some(x.clone() - 1) })
+    fn index_of_user(&self, username: &str) -> Option<usize> {
+        self.nodemap.borrow().get(username)
+            .and_then(|index|{ Some(index.clone()) })
     }
     fn connection_id(&self, index: usize) -> Option<u32> {
-        self.nodes.borrow().get(index).and_then(|x| {x.upgrade()}
-            .and_then(|x| {Some(x.borrow().sender.connection_id())}))
+        self.nodes.borrow().get(index)
+            .and_then(|node_refcell| { node_refcell.upgrade() }
+            .and_then(|node| { Some(node.borrow().sender.connection_id())}))
     }
     fn token(&self, index: usize) -> Option<ws::util::Token> {
-        self.nodes.borrow().get(index).and_then(|x| {x.upgrade()}.
-            and_then(|x| {Some(x.borrow().sender.token())}))
+        self.nodes.borrow().get(index)
+            .and_then(|x| { x.upgrade() }
+            .and_then(|x| { Some(x.borrow().sender.token()) }))
     }
 }
 
@@ -51,43 +54,54 @@ struct Server {
 }
 
 impl Handler for Server {
-    fn on_open(&mut self, handshake: Handshake) -> Result<()> {
-        let arguments = handshake.request.resource()[2..].split("=");
-        let argument_vector: Vec<&str> = arguments.collect();
-        let username: &str = argument_vector[1];
-
-        self.node.borrow_mut().owner = Some(username.into());
-        self.network.borrow_mut().add_username(username.into());
+    fn on_open(&mut self, handshake: Handshake) -> Result<()> {        
+        // Get the aruments from a URL
+        // i.e localhost:8000/user=testuser
+        let url_arguments = handshake.request.resource()[2..].split("=");
+        // Beeing greedy by not collecting pairs
+        // Instead every even number (including 0) will be an identifier
+        // and every odd number will be the assigned value
+        let argument_vector: Vec<&str> = url_arguments.collect();
+        if argument_vector[0] == "user" {
+            let username: &str = argument_vector[1];
+            self.node.borrow_mut().owner = Some(username.into());
+            self.network.borrow_mut().assign_user(username.into());
+        }
         Ok(self.count.set(self.count.get() + 1))
     }
 
     fn on_message(&mut self, msg: Message) -> Result<()> {
-        let msg_string: &str = msg.as_text()?;
-        // WARNING: PROTOCOL SPECIFIC
-        let json_message: Value = serde_json::from_str(msg_string).unwrap_or(Value::default());
+        let sender_msg_string: &str = msg.as_text()?;
+        let json_message: Value = 
+            serde_json::from_str(sender_msg_string).unwrap_or(Value::default());
         
+        // !!! WARNING !!!
+        // The word "protocol" match is protcol specific.
+        // Thus a client should make sure to send a viable protocol
         let protocol = match json_message["protocol"].as_str() {
             Some(desired_protocol) => { Some(desired_protocol) },
             _ => { None }
         };
 
+        // The words below are protcol specific.
+        // Thus a client should make sure to use a viable protocol
         match protocol {
             Some("one-to-all") => {
-                self.node.borrow().sender.broadcast(msg_string)
+                self.node.borrow().sender.broadcast(sender_msg_string)
             },
             Some("one-to-self") => {
-                self.node.borrow().sender.send(msg_string)
+                self.node.borrow().sender.send(sender_msg_string)
             },
             Some("one-to-one") => {
                 match json_message["to"].as_str() {
                     Some(receiver) => {
-                        let receiver_index = self.network.borrow().index_of(&receiver);
+                        let receiver_index = self.network.borrow().index_of_user(&receiver);
                         match receiver_index {
                             Some(index) => {
                                 self.node.borrow().sender.send_to(
                                     self.network.borrow().connection_id(index).unwrap(),
                                     self.network.borrow().token(index).unwrap(),
-                                    msg_string
+                                    sender_msg_string
                                 )
                             },
                             _ => {
@@ -126,7 +140,8 @@ impl Handler for Server {
                 println!("Closing handshake failed!"),
             _ =>
                 println!("The client encountered an error: {}", reason),
-        }
+        };
+        self.count.set(self.count.get() - 1)
     }
 
     fn on_error(&mut self, err: ws::Error) {
@@ -140,7 +155,6 @@ fn main() {
 
     listen("127.0.0.1:3012",
         |sender| {
-            // Construct the server
             let node = Node { owner: None, sender };
             let _node = network.borrow_mut().add_node(node);
             Server { 
