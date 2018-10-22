@@ -2,6 +2,7 @@ extern crate ws;
 extern crate serde_json;
 
 use std::str;
+use std::env;
 use std::rc::Rc;
 use std::rc::Weak;
 use std::cell::Cell;
@@ -54,7 +55,7 @@ struct Server {
 }
 
 impl Handler for Server {
-    fn on_open(&mut self, handshake: Handshake) -> Result<()> {        
+    fn on_open(&mut self, handshake: Handshake) -> Result<()> {
         // Get the aruments from a URL
         // i.e localhost:8000/user=testuser
         let url_arguments = handshake.request.resource()[2..].split("=");
@@ -66,8 +67,11 @@ impl Handler for Server {
             let username: &str = argument_vector[1];
             self.node.borrow_mut().owner = Some(username.into());
             self.network.borrow_mut().assign_user(username.into());
+            println!("Node connected with name: {:?}", username);
         }
-        Ok(self.count.set(self.count.get() + 1))
+        self.count.set(self.count.get() + 1);
+        println!("Total of {:?} connected nodes\n", self.count.get());
+        Ok(())
     }
 
     fn on_message(&mut self, msg: Message) -> Result<()> {
@@ -141,7 +145,8 @@ impl Handler for Server {
             _ =>
                 println!("The client encountered an error: {}", reason),
         };
-        self.count.set(self.count.get() - 1)
+        self.count.set(self.count.get() - 1);
+        println!("Total of {} connected nodes\n", self.count.get())
     }
 
     fn on_error(&mut self, err: ws::Error) {
@@ -153,7 +158,21 @@ fn main() {
     let count = Rc::new(Cell::new(0));
     let network = Rc::new(RefCell::new(Network::default()));
 
-    listen("127.0.0.1:3012",
+    // Allow to start the server on other address by suppling an argument
+    // e.g. cargo run 127.0.0.1:3015, default to 127.0.0.1:3012
+    let address: String;
+    let args: Vec<String> = env::args().collect();    
+    if let Some(address_arg) = args.get(1) {
+        address = address_arg.to_string();
+    } else {
+        address = "127.0.0.1:3012".to_string();
+    }
+
+     println!("------------------------------------");
+    println!("rustysignal is listening on socket address:\n{:?}", address);
+    println!("-------------------------------------");
+    
+    listen(address,
         |sender| {
             let node = Node { owner: None, sender };
             let _node = network.borrow_mut().add_node(node);
