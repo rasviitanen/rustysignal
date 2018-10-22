@@ -4,8 +4,7 @@ The server is used to enable nodes on the network to exchange metadata in order 
 This signaling server supplies the ability to set usernames on the network, and users have the ability to send messages to a specific peer, or broadcast messages to everyone on the network.
 
 ## Starting the server
-Start the server by running `cargo run`, this will automatically listen to `127.0.0.1:3012`. It is also possible specify which address to listen to by providing an argument: `cargo run 127.0.0.1:3015`.
-443
+Start the server by running `cargo run`, this will automatically listen to `127.0.0.1:3012`. It is also possible to specify which address to listen to by providing an argument: `cargo run 127.0.0.1:3015`.
 
 ## Connecting to the network as a peer
 When connecting to the network, i.e. Websocket, one should provide a username as a simple argument.
