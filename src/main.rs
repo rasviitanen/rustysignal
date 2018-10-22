@@ -5,7 +5,6 @@ use std::str;
 use std::env;
 use std::rc::Rc;
 use std::rc::Weak;
-use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -14,32 +13,27 @@ use serde_json::Value;
 
 #[derive(Default)]
 struct Network {
-    nodes: Rc<RefCell<Vec<Weak<RefCell<Node>>>>>,
-    nodemap: Rc<RefCell<HashMap<String, usize>>>,
+    nodemap: Rc<RefCell<HashMap<String, Weak<RefCell<Node>>>>>,
 }
 
 impl Network {
-    fn add_node(&mut self, node: Node) -> Rc<RefCell<Node>> {
-        let node = Rc::new(RefCell::new(node));
-        self.nodes.borrow_mut().push(Rc::downgrade(&node));
-        node
+    fn add_user(&mut self, owner: &str, node: &std::rc::Rc<std::cell::RefCell<Node>>) {
+        if !self.nodemap.borrow().contains_key(owner) {
+            node.borrow_mut().owner = Some(owner.into());
+            self.nodemap.borrow_mut().insert(owner.to_string(), Rc::downgrade(node));
+            println!("Node {:?} connected to the network.", owner);
+        } else {
+            println!("{:?} tried to connect, but the username was taken", owner);
+            node.borrow().sender.send("The username is taken").ok();
+        }
     }
-    fn assign_user(&mut self, username: String) {
-        self.nodemap.borrow_mut().insert(username, self.nodes.borrow().len()-1);
+
+    fn remove(&mut self, owner: &str) {
+        self.nodemap.borrow_mut().remove(owner);
     }
-    fn index_of_user(&self, username: &str) -> Option<usize> {
-        self.nodemap.borrow().get(username)
-            .and_then(|index|{ Some(index.clone()) })
-    }
-    fn connection_id(&self, index: usize) -> Option<u32> {
-        self.nodes.borrow().get(index)
-            .and_then(|node_refcell| { node_refcell.upgrade() }
-            .and_then(|node| { Some(node.borrow().sender.connection_id())}))
-    }
-    fn token(&self, index: usize) -> Option<ws::util::Token> {
-        self.nodes.borrow().get(index)
-            .and_then(|x| { x.upgrade() }
-            .and_then(|x| { Some(x.borrow().sender.token()) }))
+
+    fn size(&self) -> usize {
+        self.nodemap.borrow().len()
     }
 }
 
@@ -50,7 +44,6 @@ struct Node {
 
 struct Server {
     node: Rc<RefCell<Node>>,
-    count: Rc<Cell<u32>>,
     network: Rc<RefCell<Network>>,
 }
 
@@ -65,12 +58,9 @@ impl Handler for Server {
         let argument_vector: Vec<&str> = url_arguments.collect();
         if argument_vector[0] == "user" {
             let username: &str = argument_vector[1];
-            self.node.borrow_mut().owner = Some(username.into());
-            self.network.borrow_mut().assign_user(username.into());
-            println!("Node connected with name: {:?}", username);
+            self.network.borrow_mut().add_user(username, &self.node);
         }
-        self.count.set(self.count.get() + 1);
-        println!("Total of {:?} connected nodes\n", self.count.get());
+        println!("Network expanded to {:?} connected nodes\n", self.network.borrow().size());
         Ok(())
     }
 
@@ -99,20 +89,14 @@ impl Handler for Server {
             Some("one-to-one") => {
                 match json_message["to"].as_str() {
                     Some(receiver) => {
-                        let receiver_index = self.network.borrow().index_of_user(&receiver);
-                        match receiver_index {
-                            Some(index) => {
-                                self.node.borrow().sender.send_to(
-                                    self.network.borrow().connection_id(index).unwrap(),
-                                    self.network.borrow().token(index).unwrap(),
-                                    sender_msg_string
-                                )
-                            },
-                            _ => {
-                                self.node.borrow().sender.send(
-                                    "No node with that name"
-                                )
-                            }
+                        let network = self.network.borrow();
+                        let receiver_node = network.nodemap.borrow().get(receiver)
+                            .and_then(|node| node.upgrade());
+
+                        match receiver_node {
+                            Some(node) => {node.borrow().sender.send(sender_msg_string)}
+                            _ => self.node.borrow().sender
+                                .send("Could not find a node with that name")
                         }
                     }
                     _ => {
@@ -135,18 +119,23 @@ impl Handler for Server {
     }
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
-        match code {
-            CloseCode::Normal =>
-                println!("The client is done with the connection."),
-            CloseCode::Away =>
-                println!("The client is leaving the site."),
-            CloseCode::Abnormal =>
-                println!("Closing handshake failed!"),
-            _ =>
-                println!("The client encountered an error: {}", reason),
-        };
-        self.count.set(self.count.get() - 1);
-        println!("Total of {} connected nodes\n", self.count.get())
+        // Remove the node from the network
+        if let Some(owner) = &self.node.borrow().owner {
+            match code {
+                CloseCode::Normal =>
+                    println!("{:?} is done with the connection.", owner),
+                CloseCode::Away =>
+                    println!("{:?} left the site.", owner),
+                CloseCode::Abnormal =>
+                    println!("Closing handshake for {:?} failed!", owner),
+                _ =>
+                    println!("{:?} encountered an error: {:?}", owner, reason),
+            };
+        
+            self.network.borrow_mut().remove(owner)
+        }
+        
+        println!("Network shrinked to {:?} connected nodes\n", self.network.borrow().size());
     }
 
     fn on_error(&mut self, err: ws::Error) {
@@ -155,7 +144,6 @@ impl Handler for Server {
 }
 
 fn main() {
-    let count = Rc::new(Cell::new(0));
     let network = Rc::new(RefCell::new(Network::default()));
 
     // Allow to start the server on other address by suppling an argument
@@ -168,17 +156,15 @@ fn main() {
         address = "127.0.0.1:3012".to_string();
     }
 
-     println!("------------------------------------");
+    println!("------------------------------------");
     println!("rustysignal is listening on socket address:\n{:?}", address);
     println!("-------------------------------------");
     
     listen(address,
         |sender| {
             let node = Node { owner: None, sender };
-            let _node = network.borrow_mut().add_node(node);
             Server { 
-                node: _node,
-                count: count.clone(),
+                node: Rc::new(RefCell::new(node)),
                 network: network.clone()
             }
         }

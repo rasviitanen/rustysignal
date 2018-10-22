@@ -8,7 +8,7 @@ description = "A signaling server for WebRTC"
 repository = "https://github.com/rasviitanen/rustysignal"
 
 [dependencies]
-ws = { git = "https://github.com/rasviitanen/ws-rs.git" }
+ws = "0.7.9"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
