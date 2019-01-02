@@ -1,6 +1,6 @@
 [package]
 name = "rustysignal"
-version = "0.0.1"
+version = "1.0.0"
 authors = ["rasviitanen <rasviitanen@gmail.com>"]
 readme = "README.md"
 license = "MIT/Apache-2.0"
@@ -8,8 +8,11 @@ description = "A signaling server for WebRTC"
 repository = "https://github.com/rasviitanen/rustysignal"
 
 [dependencies]
-ws = "0.7.9"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
 lazy_static = "1.0"
+
+[dependencies.ws]
+version = "0.7.9"
+features = ["ssl"]
