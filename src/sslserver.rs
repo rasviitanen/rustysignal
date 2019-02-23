@@ -231,6 +231,7 @@ pub fn run() {
     println!("------------------------------------");
     println!("rustysignal is listening on securily on address");
     println!("wss://{}", matches.value_of("ADDR").unwrap());
+    println!("To disable SSL you need to reinstall rustysignal using 'cargo install rustysignal --force");
     println!("-------------------------------------");
 
     ws::Builder::new()

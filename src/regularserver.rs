@@ -162,7 +162,7 @@ pub fn run() {
     println!("------------------------------------");
     println!("rustysignal is listening on address");
     println!("ws://{}", matches.value_of("ADDR").unwrap());
-    println!("Enable SSL with 'rustysignal --features ssl <ADDR> <CERT> <KEY>'");
+    println!("To use SSL you need to reinstall rustysignal using 'cargo install rustysignal --features ssl --force");
     println!("-------------------------------------");
     
     listen(matches.value_of("ADDR").unwrap(),
