@@ -1,20 +1,21 @@
 # rustysignal
 [![Cargo](https://img.shields.io/crates/v/rustysignal.svg)](https://crates.io/crates/rustysignal) 
 
-A signaling server written in Rust for WebRTC.
+A signaling server written in Rust for WebRTC that supports SSL.
 The server is used to enable nodes on the network to exchange metadata in order to establish a peer-to-peer connection.
 This signaling server supplies the ability to set usernames on the network, and users have the ability to send messages to a specific peer, or broadcast messages to everyone on the network.
 
 ## Installation
 *You need [**Cargo**](https://doc.rust-lang.org/cargo/getting-started/installation.html) to be able to install this binary.* 
 
-Install the server by writing `cargo install rustysignal` in a terminal. Once installed, you can start it by writing `rustysignal` in a terminal, which will start the server and listen to messages on the default address `127.0.0.1:3012`. 
+Install the server by writing `cargo install rustysignal` in a terminal. Once installed, you can start it by executing `rustysignal 127.0.0.1:3012` in your terminal, which will start the server and listen to messages on the address `127.0.0.1:3012`. 
 
-It is also possible to specify which address to listen to by providing an argument, for example: `rustysignal 127.0.0.1:3015`.
+It is also possible to run the server using SSL. Do this by specifying the feature accordingly: `rustysignal --features ssl 127.0.0.1:3015 <CERT> <KEY>`.
+Note that this will require your own certificate.
 
 ## Connecting to the network as a peer
 When connecting to the network, i.e. Websocket, one should provide a username as a simple argument.
-> ws://signalserverhost?user=yourname
+> wss://signalserverhost?user=yourname
 
 Peers can be found by:
   1. A one-to-one request via a provided username, which sends your information to only the node tied to that username.
