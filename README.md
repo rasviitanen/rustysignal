@@ -8,10 +8,18 @@ This signaling server supplies the ability to set usernames on the network, and 
 ## Installation
 *You need [**Cargo**](https://doc.rust-lang.org/cargo/getting-started/installation.html) to be able to install this binary.* 
 
-Install the server by writing `cargo install rustysignal` in a terminal. Once installed, you can start it by executing `rustysignal 127.0.0.1:3012` in your terminal, which will start the server and listen to messages on the address `127.0.0.1:3012`. 
+Install the server
 
-It is also possible to run the server using SSL. Do this by specifying the feature accordingly: `rustysignal --features ssl 127.0.0.1:3015 <CERT> <KEY>`.
-Note that this will require your own certificate.
+`cargo install rustysignal` 
+
+If you want to enable SSL, make sure to include it as a feature
+
+`cargo install rustysignal --features SSL`. 
+
+Once installed, you can start it by executing `rustysignal 127.0.0.1:3012` in your terminal, which will start the server and listen to messages on the address `127.0.0.1:3012`.
+
+If you are using SSL, you will need to provide your certificate. 
+`rustysignal 127.0.0.1:3015 <CERT> <KEY>`
 
 ## Connecting to the network as a peer
 When connecting to the network, i.e. Websocket, one should provide a username as a simple argument.
