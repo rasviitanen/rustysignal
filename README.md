@@ -2,19 +2,21 @@
 [![Cargo](https://img.shields.io/crates/v/rustysignal.svg)](https://crates.io/crates/rustysignal) 
 
 A signaling server written in Rust for WebRTC that supports SSL.
-The server is used to enable nodes on the network to exchange metadata in order to establish a peer-to-peer connection.
+The signalingserver is used to enable nodes on the network to exchange metadata in order to establish a peer-to-peer connection.
 This signaling server supplies the ability to set usernames on the network, and users have the ability to send messages to a specific peer, or broadcast messages to everyone on the network.
 
 ## Installation
 *You need [**Cargo**](https://doc.rust-lang.org/cargo/getting-started/installation.html) to be able to install this binary.* 
 
-Install the server
+Install the signaling server without SSL
+(Suitable for local testing)
 
 `cargo install rustysignal` 
 
 If you want to enable SSL, make sure to include it as a feature
+(Needed when using WebRTC in production)
 
-`cargo install rustysignal --features SSL`. 
+`cargo install rustysignal --features SSL`
 
 Once installed, you can start it by executing `rustysignal 127.0.0.1:3012` in your terminal, which will start the server and listen to messages on the address `127.0.0.1:3012`.
 
