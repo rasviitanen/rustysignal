@@ -1,7 +1,9 @@
 # rustysignal
 [![Cargo](https://img.shields.io/crates/v/rustysignal.svg)](https://crates.io/crates/rustysignal) 
 
-A signaling server written in Rust for WebRTC that supports SSL.
+> :warning: The version on the master-branch is currently untested. If you want to use a more stable version, install it from cargo according to the instructions below.
+
+A signaling server written in Rust for WebRTC that supports SSL and Push notifications.
 The signaling server is used to enable nodes on the network to exchange metadata in order to establish a peer-to-peer connection.
 This signaling server supplies the ability to set usernames on the network, and users have the ability to send messages to a specific peer, or broadcast messages to everyone on the network.
 
@@ -22,6 +24,10 @@ Once installed, you can start it by executing `rustysignal 127.0.0.1:3012` in yo
 
 If you are using SSL, you will need to provide your certificate. 
 `rustysignal 127.0.0.1:3015 <CERT> <KEY>`
+
+### Push
+If you want to use push, you will need to build rustysignal from source. Clone the master branch, and run the server with `--features push`. For both push and ssl functionality, run it with `--features 'ssl push'`
+The push is sent by including a connection request in the request payload. I.e. `action: "connection_request`. See `src/push.rs` for more information.
 
 ## Connecting to the network as a peer
 When connecting to the network, i.e. Websocket, one should provide a username as a simple argument.

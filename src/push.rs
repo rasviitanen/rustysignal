@@ -17,10 +17,6 @@ pub fn push(push_payload: &str, subscription: &str) {
     println!("!!!!!! Sending PUSH !!!!!!!");
     println!("{:?}", subscription);
 
-    let mut file = File::open("cert/vapid/subscription.json").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-
     let subscription_info: SubscriptionInfo = serde_json::from_str(subscription).unwrap();
 
     let mut builder = WebPushMessageBuilder::new(&subscription_info).unwrap();

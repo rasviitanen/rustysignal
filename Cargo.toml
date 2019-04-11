@@ -17,10 +17,12 @@ log = "0.4.0"
 env_logger = "0.6.0"
 ws = { version = "0.8.0", features = ["ssl"] }
 openssl = "0.10.16"
-web-push = "0.4.1"
+web-push = { version = "0.4.1", optional = true }
 tokio = "0.1.15"
 base64 = "0.10.1"
 futures = "0.1.25"
 
 [features]
 ssl = ["ws/ssl"]
+push = ["web-push"]
+
