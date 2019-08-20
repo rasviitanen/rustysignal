@@ -127,7 +127,7 @@ impl Handler for Server {
                         match endpoint_node {
                             Some(node) => { node.borrow().sender.send(text_message) }
                             _ => {self.node.borrow().sender
-                                .send("Could not find a node with that name")}
+                                .send(format!("Could not find a node with the name {}", endpoint))}
                         }
                     }
                     _ => {
