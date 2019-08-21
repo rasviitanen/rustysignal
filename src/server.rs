@@ -13,16 +13,7 @@ use ws::{Handler, Result, Message, Handshake, CloseCode};
 use ws::util::TcpStream;
 
 #[cfg(feature = "ssl")]
-use std::fs::File;
-#[cfg(feature = "ssl")]
-use std::io::Read;
-
-#[cfg(feature = "ssl")]
-use openssl::pkey::PKey;
-#[cfg(feature = "ssl")]
-use openssl::ssl::{SslAcceptor, SslMethod, SslStream};
-#[cfg(feature = "ssl")]
-use openssl::x509::X509;
+use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod, SslStream};
 
 #[cfg(not(feature = "ssl"))]
 struct SslAcceptor {}
@@ -182,14 +173,6 @@ impl Handler for Server {
 }
 
 
-#[cfg(feature = "ssl")]
-fn read_file(name: &str) -> std::io::Result<Vec<u8>> {
-    let mut file = File::open(name)?;
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf)?;
-    Ok(buf)
-}
-
 pub fn run() {
     // Setup logging
     env_logger::init();
@@ -230,23 +213,11 @@ pub fn run() {
     let matches = app.get_matches();
 
     #[cfg(feature = "ssl")]
-    let cert = {
-        let data = read_file(matches.value_of("CERT").unwrap()).unwrap();
-        X509::from_pem(data.as_ref()).unwrap()
-    };
-
-    #[cfg(feature = "ssl")]
-    let pkey = {
-        let data = read_file(matches.value_of("KEY").unwrap()).unwrap();
-        PKey::private_key_from_pem(data.as_ref()).unwrap()
-    };
-
-    #[cfg(feature = "ssl")]
     let acceptor = Rc::new({
         println!("Building acceptor");
         let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-        builder.set_private_key(&pkey).unwrap();
-        builder.set_certificate(&cert).unwrap();
+        builder.set_private_key_file(matches.value_of("KEY").unwrap(), SslFiletype::PEM).unwrap();
+        builder.set_certificate_chain_file(matches.value_of("CERT").unwrap()).unwrap();
 
         builder.build()
     });
