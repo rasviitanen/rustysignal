@@ -116,7 +116,7 @@ impl Handler for Server {
 
         // The words below are protcol specific.
         // Thus a client should make sure to use a viable protocol
-        match protocol {
+        let ret = match protocol {
             Some("one-to-all") => {
                 self.node.borrow().sender.broadcast(text_message)
             },
@@ -142,20 +142,22 @@ impl Handler for Server {
                         )
                     }
                 }
-                
+
             }
             _ => {
                 self.node.borrow().sender.send(
-                        "Invalid protocol, valid protocols include: 
+                    "Invalid protocol, valid protocols include: 
                             'one-to-one'
                             'one-to-many'
                             'one-to-all'"
-                    )
-                }
-        }
-     
+                )
+            }
+        };
+
         #[cfg(feature = "push")]
         self.handle_push_requests(&json_message);   
+
+        return ret
     }
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
