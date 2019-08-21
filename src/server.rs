@@ -144,7 +144,7 @@ impl Handler for Server {
                 self.node.borrow().sender.send(
                     "Invalid protocol, valid protocols include:
                             'one-to-one'
-                            'one-to-many'
+                            'one-to-self'
                             'one-to-all'"
                 )
             }
