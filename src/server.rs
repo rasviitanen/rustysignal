@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use ws::{listen, Handler, Result, Message, Handshake, CloseCode};
+use ws::{Handler, Result, Message, Handshake, CloseCode};
 #[cfg(feature = "ssl")]
 use ws::util::TcpStream;
 
@@ -24,19 +24,15 @@ use openssl::ssl::{SslAcceptor, SslMethod, SslStream};
 #[cfg(feature = "ssl")]
 use openssl::x509::X509;
 
+#[cfg(not(feature = "ssl"))]
+struct SslAcceptor {}
+
 use node::Node;
 use network::Network;
 
-#[cfg(feature = "ssl")]
 struct Server {
     node: Rc<RefCell<Node>>,
     ssl: Rc<SslAcceptor>,
-    network: Rc<RefCell<Network>>,
-}
-
-#[cfg(not(feature = "ssl"))]
-struct Server {
-    node: Rc<RefCell<Node>>,
     network: Rc<RefCell<Network>>,
 }
 
@@ -44,14 +40,14 @@ impl Server {
     #[cfg(feature = "push")]
     fn handle_push_requests(&mut self, json_message: &Value) {
         match json_message["action"].as_str() {
-            Some("subscribe-push") => { 
-                    match json_message["subscriptionData"].as_str() {
-                            Some(data) => {
-                                self.network.borrow_mut().add_subscription(data, &self.node);
-                            },
-                            _ => { println!("No subscription data") }
-                    }
-                },
+            Some("subscribe-push") => {
+                match json_message["subscriptionData"].as_str() {
+                    Some(data) => {
+                        self.network.borrow_mut().add_subscription(data, &self.node);
+                    },
+                    _ => { println!("No subscription data") }
+                }
+            },
             Some("connection-request") => {
                 match json_message["endpoint"].as_str() {
                     Some(endpoint) => {
@@ -194,139 +190,58 @@ fn read_file(name: &str) -> std::io::Result<Vec<u8>> {
     Ok(buf)
 }
 
-#[cfg(not(feature = "ssl"))]
 pub fn run() {
     // Setup logging
     env_logger::init();
 
     // setup command line arguments
-    #[cfg(not(feature = "push"))]
-    let matches = clap::App::new("Rustysignal")
+    let mut app = clap::App::new("Rustysignal")
         .version("2.0.0")
         .author("Rasmus Viitanen <rasviitanen@gmail.com>")
         .about("A signaling server implemented in Rust that can be used for e.g. WebRTC, see https://github.com/rasviitanen/rustysignal")
         .arg(
             clap::Arg::with_name("ADDR")
-                .help("Address on which to bind the server e.g. 127.0.0.1:3012")
-                .required(true)
-                .index(1),
-        )
-        .get_matches();
+            .help("Address on which to bind the server e.g. 127.0.0.1:3012")
+            .required(true)
+        );
 
-    #[cfg(feature = "push")]
-    let matches = clap::App::new("Rustysignal")
-        .version("2.0.0")
-        .author("Rasmus Viitanen <rasviitanen@gmail.com>")
-        .about("A signaling server implemented in Rust that can be used for e.g. WebRTC, see https://github.com/rasviitanen/rustysignal")
-        .arg(
-            clap::Arg::with_name("ADDR")
-                .help("Address on which to bind the server e.g. 127.0.0.1:3012")
-                .required(true)
-                .index(1),
-        )
-        .arg(
-            clap::Arg::with_name("VAPIDKEY")
-                .help("A NIST P256 EC private key to create a VAPID signature, used for push")
-                .required(true)
-                .index(2),
-        )
-        .get_matches();
-    
-    println!("------------------------------------");
-    println!("rustysignal is listening on address");
-    println!("ws://{}", matches.value_of("ADDR").unwrap());
-    println!("To use SSL you need to reinstall rustysignal using 'cargo install rustysignal --features ssl --force");
-    println!("To enable push notifications, you need to reinstall rustysignal using 'cargo install rustysignal --features push --force");
-    println!("For both, please reinstall using 'cargo install rustysignal --features 'ssl push' --force");
-    println!("-------------------------------------");
-    
-    let network = Rc::new(RefCell::new(Network::default()));
-    
-    #[cfg(feature = "push")]
-    network.borrow_mut().set_vapid_path(matches.value_of("VAPIDKEY").unwrap());    
-
-    listen(matches.value_of("ADDR").unwrap(),
-        |sender| {
-            let node = Node::new(sender);
-            Server { 
-                node: Rc::new(RefCell::new(node)),
-                network: network.clone()
-            }
-        }
-    ).unwrap()
-}
-
-#[cfg(feature = "ssl")]
-pub fn run() {
-    // Setup logging
-    env_logger::init();
-
-    // setup command line arguments
-    #[cfg(feature = "push")]
-    let matches = clap::App::new("Rustysignal")
-        .version("2.0.0")
-        .author("Rasmus Viitanen <rasviitanen@gmail.com>")
-        .about("A secure signaling server implemented in Rust that can be used for e.g. WebRTC, see https://github.com/rasviitanen/rustysignal")
-        .arg(
-            clap::Arg::with_name("ADDR")
-                .help("Address on which to bind the server.")
-                .required(true)
-                .index(1),
-        )
-        .arg(
-            clap::Arg::with_name("CERT")
+    if cfg!(feature = "ssl") {
+        app = app
+            .arg(
+                clap::Arg::with_name("CERT")
                 .help("Path to the SSL certificate.")
                 .required(true)
-                .index(2),
-        )
-        .arg(
-            clap::Arg::with_name("KEY")
+            )
+            .arg(
+                clap::Arg::with_name("KEY")
                 .help("Path to the SSL certificate key.")
                 .required(true)
-                .index(3),
-        ).arg(
-            clap::Arg::with_name("VAPIDKEY")
-                .help("Path to NIST P256 EC private key to create a VAPID signature, used for push")
-                .required(true)
-                .index(4),
-        )
-        .get_matches();
+            );
+    }
 
-    #[cfg(not(feature = "push"))]
-    let matches = clap::App::new("Rustysignal")
-        .version("2.0.0")
-        .author("Rasmus Viitanen <rasviitanen@gmail.com>")
-        .about("A secure signaling server implemented in Rust that can be used for e.g. WebRTC, see https://github.com/rasviitanen/rustysignal")
-        .arg(
-            clap::Arg::with_name("ADDR")
-                .help("Address on which to bind the server.")
-                .required(true)
-                .index(1),
-        )
-        .arg(
-            clap::Arg::with_name("CERT")
-                .help("Path to the SSL certificate.")
-                .required(true)
-                .index(2),
-        )
-        .arg(
-            clap::Arg::with_name("KEY")
-                .help("Path to the SSL certificate key.")
-                .required(true)
-                .index(3),
-        )
-        .get_matches();
-    
+    if cfg!(feature = "push") {
+        app = app.arg(
+            clap::Arg::with_name("VAPIDKEY")
+            .help("A NIST P256 EC private key to create a VAPID signature, used for push")
+            .required(true)
+        );
+    }
+
+    let matches = app.get_matches();
+
+    #[cfg(feature = "ssl")]
     let cert = {
         let data = read_file(matches.value_of("CERT").unwrap()).unwrap();
         X509::from_pem(data.as_ref()).unwrap()
     };
 
+    #[cfg(feature = "ssl")]
     let pkey = {
         let data = read_file(matches.value_of("KEY").unwrap()).unwrap();
         PKey::private_key_from_pem(data.as_ref()).unwrap()
     };
 
+    #[cfg(feature = "ssl")]
     let acceptor = Rc::new({
         println!("Building acceptor");
         let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
@@ -335,33 +250,57 @@ pub fn run() {
 
         builder.build()
     });
+    #[cfg(not(feature = "ssl"))]
+    let acceptor = Rc::new(SslAcceptor{});
 
     println!("------------------------------------");
-    println!("rustysignal is listening on securily on address");
-    println!("wss://{}", matches.value_of("ADDR").unwrap());
-    println!("To disable SSL you need to reinstall rustysignal using 'cargo install rustysignal --force");
-    println!("To enable push notifications, you need to reinstall rustysignal using 'cargo install rustysignal --features 'ssl push' --force");
+    #[cfg(not(feature = "ssl"))]
+    {
+        println!("rustysignal is listening on address");
+        println!("ws://{}", matches.value_of("ADDR").unwrap());
+        println!("To use SSL you need to reinstall rustysignal using 'cargo install rustysignal --features ssl --force");
+        #[cfg(not(feature = "push"))]
+        {
+            println!("To enable push notifications, you need to reinstall rustysignal using 'cargo install rustysignal --features push --force");
+            println!("For both, please reinstall using 'cargo install rustysignal --features 'ssl push' --force");
+        }
+    }
+
+    #[cfg(feature = "ssl")]
+    {
+        println!("rustysignal is listening on securily on address");
+        println!("wss://{}", matches.value_of("ADDR").unwrap());
+        println!("To disable SSL you need to reinstall rustysignal using 'cargo install rustysignal --force");
+        #[cfg(not(feature = "push"))]
+        println!("To enable push notifications, you need to reinstall rustysignal using 'cargo install rustysignal --features 'ssl push' --force");
+    }
     println!("-------------------------------------");
-    
+
     let network = Rc::new(RefCell::new(Network::default()));
 
     #[cfg(feature = "push")]
     network.borrow_mut().set_vapid_path(matches.value_of("VAPIDKEY").unwrap());
 
+
+    #[cfg(feature = "ssl")]
+    let encrypt_server = true;
+    #[cfg(not(feature = "ssl"))]
+    let encrypt_server = false;
+
     ws::Builder::new()
         .with_settings(ws::Settings {
-            encrypt_server: true,
+            encrypt_server: encrypt_server,
             ..ws::Settings::default()
         })
-        .build(|sender: ws::Sender| {
-            println!("Building server");
-            let node = Node::new(sender);
-            Server {
-                node: Rc::new(RefCell::new(node)),
-                ssl: acceptor.clone(),
-                network: network.clone()
-            }
-        })
-        .unwrap().listen(matches.value_of("ADDR").unwrap())
-    .unwrap();
+    .build(|sender: ws::Sender| {
+        println!("Building server");
+        let node = Node::new(sender);
+        Server {
+            node: Rc::new(RefCell::new(node)),
+            ssl: acceptor.clone(),
+            network: network.clone()
+        }
+    })
+    .unwrap().listen(matches.value_of("ADDR").unwrap())
+        .unwrap();
 }
