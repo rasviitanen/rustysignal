@@ -41,8 +41,8 @@ struct Server {
 }
 
 impl Server {
-    #[cfg(feature = "push")]       
-    fn handle_push_requests(&mut self, json_message: &Value) {  
+    #[cfg(feature = "push")]
+    fn handle_push_requests(&mut self, json_message: &Value) {
         match json_message["action"].as_str() {
             Some("subscribe-push") => { 
                     match json_message["subscriptionData"].as_str() {
@@ -92,7 +92,7 @@ impl Handler for Server {
         Ok(())
     }
 
-    #[cfg(feature = "ssl")]       
+    #[cfg(feature = "ssl")]
     fn upgrade_ssl_server(&mut self, sock: TcpStream) -> ws::Result<SslStream<TcpStream>> {
         println!("Server node upgraded");
         // TODO  This is weird, but the sleep is needed...
@@ -102,7 +102,7 @@ impl Handler for Server {
 
     fn on_message(&mut self, msg: Message) -> Result<()> {
         let text_message: &str = msg.as_text()?;
-        let json_message: Value = 
+        let json_message: Value =
             serde_json::from_str(text_message).unwrap_or(Value::default());
 
         // !!! WARNING !!!
@@ -146,7 +146,7 @@ impl Handler for Server {
             }
             _ => {
                 self.node.borrow().sender.send(
-                    "Invalid protocol, valid protocols include: 
+                    "Invalid protocol, valid protocols include:
                             'one-to-one'
                             'one-to-many'
                             'one-to-all'"
@@ -155,7 +155,7 @@ impl Handler for Server {
         };
 
         #[cfg(feature = "push")]
-        self.handle_push_requests(&json_message);   
+        self.handle_push_requests(&json_message);
 
         return ret
     }
@@ -173,10 +173,10 @@ impl Handler for Server {
                 _ =>
                     println!("{:?} encountered an error: {:?}", owner, reason),
             };
-        
+
             self.network.borrow_mut().remove(owner)
         }
-        
+
         println!("Network shrinked to {:?} connected nodes\n", self.network.borrow().size());
     }
 
