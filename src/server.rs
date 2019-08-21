@@ -15,14 +15,12 @@ use ws::util::TcpStream;
 #[cfg(feature = "ssl")]
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod, SslStream};
 
-#[cfg(not(feature = "ssl"))]
-struct SslAcceptor {}
-
 use node::Node;
 use network::Network;
 
 struct Server {
     node: Rc<RefCell<Node>>,
+    #[cfg(feature = "ssl")]
     ssl: Rc<SslAcceptor>,
     network: Rc<RefCell<Network>>,
 }
@@ -221,8 +219,6 @@ pub fn run() {
 
         builder.build()
     });
-    #[cfg(not(feature = "ssl"))]
-    let acceptor = Rc::new(SslAcceptor{});
 
     println!("------------------------------------");
     #[cfg(not(feature = "ssl"))]
@@ -268,6 +264,7 @@ pub fn run() {
         let node = Node::new(sender);
         Server {
             node: Rc::new(RefCell::new(node)),
+            #[cfg(feature = "ssl")]
             ssl: acceptor.clone(),
             network: network.clone()
         }
