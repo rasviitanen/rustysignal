@@ -70,16 +70,22 @@ impl Server {
 impl Handler for Server {
     fn on_open(&mut self, handshake: Handshake) -> Result<()> {
         // Get the aruments from a URL
-        // i.e localhost:8000/user=testuser
-        let url_arguments = handshake.request.resource()[2..].split("=");
+        // i.e localhost:8000/?user=testuser
+
+        // skip()ing everything before the first '?' allows us to run the
+        // server behind a reverse proxy like nginx with minimal fuss
+        let url_arguments = handshake.request.resource()
+            .split(|c| c=='?'||c=='='||c=='&').skip(1);
         // Beeing greedy by not collecting pairs
         // Instead every even number (including 0) will be an identifier
         // and every odd number will be the assigned value
         let argument_vector: Vec<&str> = url_arguments.collect();
 
-        if argument_vector[0] == "user" {
-            let username: &str = argument_vector[1]; // This can panic
+        if argument_vector.len() >= 2 && argument_vector[0] == "user" {
+            let username: &str = argument_vector[1];
             self.network.borrow_mut().add_user(username, &self.node);
+        } else {
+            println!("New node didn't provide a username");
         }
 
         println!("Network expanded to {:?} connected nodes", self.network.borrow().size());
