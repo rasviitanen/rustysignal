@@ -8,50 +8,35 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use ws::{listen, Handler, Result, Message, Handshake, CloseCode};
+use ws::{Handler, Result, Message, Handshake, CloseCode};
 #[cfg(feature = "ssl")]
 use ws::util::TcpStream;
 
 #[cfg(feature = "ssl")]
-use std::fs::File;
-#[cfg(feature = "ssl")]
-use std::io::Read;
-
-#[cfg(feature = "ssl")]
-use openssl::pkey::PKey;
-#[cfg(feature = "ssl")]
-use openssl::ssl::{SslAcceptor, SslMethod, SslStream};
-#[cfg(feature = "ssl")]
-use openssl::x509::X509;
+use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod, SslStream};
 
 use node::Node;
 use network::Network;
 
-#[cfg(feature = "ssl")]
 struct Server {
     node: Rc<RefCell<Node>>,
+    #[cfg(feature = "ssl")]
     ssl: Rc<SslAcceptor>,
     network: Rc<RefCell<Network>>,
 }
 
-#[cfg(not(feature = "ssl"))]
-struct Server {
-    node: Rc<RefCell<Node>>,
-    network: Rc<RefCell<Network>>,
-}
-
 impl Server {
-    #[cfg(feature = "push")]       
-    fn handle_push_requests(&mut self, json_message: &Value) {  
+    #[cfg(feature = "push")]
+    fn handle_push_requests(&mut self, json_message: &Value) {
         match json_message["action"].as_str() {
-            Some("subscribe-push") => { 
-                    match json_message["subscriptionData"].as_str() {
-                            Some(data) => {
-                                self.network.borrow_mut().add_subscription(data, &self.node);
-                            },
-                            _ => { println!("No subscription data") }
-                    }
-                },
+            Some("subscribe-push") => {
+                match json_message["subscriptionData"].as_str() {
+                    Some(data) => {
+                        self.network.borrow_mut().add_subscription(data, &self.node);
+                    },
+                    _ => { println!("No subscription data") }
+                }
+            },
             Some("connection-request") => {
                 match json_message["endpoint"].as_str() {
                     Some(endpoint) => {
@@ -70,23 +55,29 @@ impl Server {
 impl Handler for Server {
     fn on_open(&mut self, handshake: Handshake) -> Result<()> {
         // Get the aruments from a URL
-        // i.e localhost:8000/user=testuser
-        let url_arguments = handshake.request.resource()[2..].split("=");
+        // i.e localhost:8000/?user=testuser
+
+        // skip()ing everything before the first '?' allows us to run the
+        // server behind a reverse proxy like nginx with minimal fuss
+        let url_arguments = handshake.request.resource()
+            .split(|c| c=='?'||c=='='||c=='&').skip(1);
         // Beeing greedy by not collecting pairs
         // Instead every even number (including 0) will be an identifier
         // and every odd number will be the assigned value
         let argument_vector: Vec<&str> = url_arguments.collect();
 
-        if argument_vector[0] == "user" {
-            let username: &str = argument_vector[1]; // This can panic
+        if argument_vector.len() >= 2 && argument_vector[0] == "user" {
+            let username: &str = argument_vector[1];
             self.network.borrow_mut().add_user(username, &self.node);
+        } else {
+            println!("New node didn't provide a username");
         }
 
         println!("Network expanded to {:?} connected nodes", self.network.borrow().size());
         Ok(())
     }
 
-    #[cfg(feature = "ssl")]       
+    #[cfg(feature = "ssl")]
     fn upgrade_ssl_server(&mut self, sock: TcpStream) -> ws::Result<SslStream<TcpStream>> {
         println!("Server node upgraded");
         // TODO  This is weird, but the sleep is needed...
@@ -96,7 +87,7 @@ impl Handler for Server {
 
     fn on_message(&mut self, msg: Message) -> Result<()> {
         let text_message: &str = msg.as_text()?;
-        let json_message: Value = 
+        let json_message: Value =
             serde_json::from_str(text_message).unwrap_or(Value::default());
 
         // !!! WARNING !!!
@@ -110,7 +101,7 @@ impl Handler for Server {
 
         // The words below are protcol specific.
         // Thus a client should make sure to use a viable protocol
-        match protocol {
+        let ret = match protocol {
             Some("one-to-all") => {
                 self.node.borrow().sender.broadcast(text_message)
             },
@@ -127,7 +118,7 @@ impl Handler for Server {
                         match endpoint_node {
                             Some(node) => { node.borrow().sender.send(text_message) }
                             _ => {self.node.borrow().sender
-                                .send("Could not find a node with that name")}
+                                .send(format!("Could not find a node with the name {}", endpoint))}
                         }
                     }
                     _ => {
@@ -136,20 +127,22 @@ impl Handler for Server {
                         )
                     }
                 }
-                
+
             }
             _ => {
                 self.node.borrow().sender.send(
-                        "Invalid protocol, valid protocols include: 
+                    "Invalid protocol, valid protocols include:
                             'one-to-one'
-                            'one-to-many'
+                            'one-to-self'
                             'one-to-all'"
-                    )
-                }
-        }
-     
+                )
+            }
+        };
+
         #[cfg(feature = "push")]
-        self.handle_push_requests(&json_message);   
+        self.handle_push_requests(&json_message);
+
+        return ret
     }
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
@@ -165,10 +158,10 @@ impl Handler for Server {
                 _ =>
                     println!("{:?} encountered an error: {:?}", owner, reason),
             };
-        
+
             self.network.borrow_mut().remove(owner)
         }
-        
+
         println!("Network shrinked to {:?} connected nodes\n", self.network.borrow().size());
     }
 
@@ -178,182 +171,104 @@ impl Handler for Server {
 }
 
 
-#[cfg(feature = "ssl")]
-fn read_file(name: &str) -> std::io::Result<Vec<u8>> {
-    let mut file = File::open(name)?;
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf)?;
-    Ok(buf)
-}
-
-#[cfg(not(feature = "ssl"))]
 pub fn run() {
     // Setup logging
     env_logger::init();
 
     // setup command line arguments
-    #[cfg(not(feature = "push"))]
-    let matches = clap::App::new("Rustysignal")
+    let mut app = clap::App::new("Rustysignal")
         .version("2.0.0")
         .author("Rasmus Viitanen <rasviitanen@gmail.com>")
         .about("A signaling server implemented in Rust that can be used for e.g. WebRTC, see https://github.com/rasviitanen/rustysignal")
         .arg(
             clap::Arg::with_name("ADDR")
-                .help("Address on which to bind the server e.g. 127.0.0.1:3012")
-                .required(true)
-                .index(1),
-        )
-        .get_matches();
+            .help("Address on which to bind the server e.g. 127.0.0.1:3012")
+            .required(true)
+        );
 
-    #[cfg(feature = "push")]
-    let matches = clap::App::new("Rustysignal")
-        .version("2.0.0")
-        .author("Rasmus Viitanen <rasviitanen@gmail.com>")
-        .about("A signaling server implemented in Rust that can be used for e.g. WebRTC, see https://github.com/rasviitanen/rustysignal")
-        .arg(
-            clap::Arg::with_name("ADDR")
-                .help("Address on which to bind the server e.g. 127.0.0.1:3012")
-                .required(true)
-                .index(1),
-        )
-        .arg(
-            clap::Arg::with_name("VAPIDKEY")
-                .help("A NIST P256 EC private key to create a VAPID signature, used for push")
-                .required(true)
-                .index(2),
-        )
-        .get_matches();
-    
-    println!("------------------------------------");
-    println!("rustysignal is listening on address");
-    println!("ws://{}", matches.value_of("ADDR").unwrap());
-    println!("To use SSL you need to reinstall rustysignal using 'cargo install rustysignal --features ssl --force");
-    println!("To enable push notifications, you need to reinstall rustysignal using 'cargo install rustysignal --features push --force");
-    println!("For both, please reinstall using 'cargo install rustysignal --features 'ssl push' --force");
-    println!("-------------------------------------");
-    
-    let network = Rc::new(RefCell::new(Network::default()));
-    
-    #[cfg(feature = "push")]
-    network.borrow_mut().set_vapid_path(matches.value_of("VAPIDKEY").unwrap());    
-
-    listen(matches.value_of("ADDR").unwrap(),
-        |sender| {
-            let node = Node::new(sender);
-            Server { 
-                node: Rc::new(RefCell::new(node)),
-                network: network.clone()
-            }
-        }
-    ).unwrap()
-}
-
-#[cfg(feature = "ssl")]
-pub fn run() {
-    // Setup logging
-    env_logger::init();
-
-    // setup command line arguments
-    #[cfg(feature = "push")]
-    let matches = clap::App::new("Rustysignal")
-        .version("2.0.0")
-        .author("Rasmus Viitanen <rasviitanen@gmail.com>")
-        .about("A secure signaling server implemented in Rust that can be used for e.g. WebRTC, see https://github.com/rasviitanen/rustysignal")
-        .arg(
-            clap::Arg::with_name("ADDR")
-                .help("Address on which to bind the server.")
-                .required(true)
-                .index(1),
-        )
-        .arg(
-            clap::Arg::with_name("CERT")
+    if cfg!(feature = "ssl") {
+        app = app
+            .arg(
+                clap::Arg::with_name("CERT")
                 .help("Path to the SSL certificate.")
                 .required(true)
-                .index(2),
-        )
-        .arg(
-            clap::Arg::with_name("KEY")
+            )
+            .arg(
+                clap::Arg::with_name("KEY")
                 .help("Path to the SSL certificate key.")
                 .required(true)
-                .index(3),
-        ).arg(
+            );
+    }
+
+    if cfg!(feature = "push") {
+        app = app.arg(
             clap::Arg::with_name("VAPIDKEY")
-                .help("Path to NIST P256 EC private key to create a VAPID signature, used for push")
-                .required(true)
-                .index(4),
-        )
-        .get_matches();
+            .help("A NIST P256 EC private key to create a VAPID signature, used for push")
+            .required(true)
+        );
+    }
 
-    #[cfg(not(feature = "push"))]
-    let matches = clap::App::new("Rustysignal")
-        .version("2.0.0")
-        .author("Rasmus Viitanen <rasviitanen@gmail.com>")
-        .about("A secure signaling server implemented in Rust that can be used for e.g. WebRTC, see https://github.com/rasviitanen/rustysignal")
-        .arg(
-            clap::Arg::with_name("ADDR")
-                .help("Address on which to bind the server.")
-                .required(true)
-                .index(1),
-        )
-        .arg(
-            clap::Arg::with_name("CERT")
-                .help("Path to the SSL certificate.")
-                .required(true)
-                .index(2),
-        )
-        .arg(
-            clap::Arg::with_name("KEY")
-                .help("Path to the SSL certificate key.")
-                .required(true)
-                .index(3),
-        )
-        .get_matches();
-    
-    let cert = {
-        let data = read_file(matches.value_of("CERT").unwrap()).unwrap();
-        X509::from_pem(data.as_ref()).unwrap()
-    };
+    let matches = app.get_matches();
 
-    let pkey = {
-        let data = read_file(matches.value_of("KEY").unwrap()).unwrap();
-        PKey::private_key_from_pem(data.as_ref()).unwrap()
-    };
-
+    #[cfg(feature = "ssl")]
     let acceptor = Rc::new({
         println!("Building acceptor");
         let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-        builder.set_private_key(&pkey).unwrap();
-        builder.set_certificate(&cert).unwrap();
+        builder.set_private_key_file(matches.value_of("KEY").unwrap(), SslFiletype::PEM).unwrap();
+        builder.set_certificate_chain_file(matches.value_of("CERT").unwrap()).unwrap();
 
         builder.build()
     });
 
     println!("------------------------------------");
-    println!("rustysignal is listening on securily on address");
-    println!("wss://{}", matches.value_of("ADDR").unwrap());
-    println!("To disable SSL you need to reinstall rustysignal using 'cargo install rustysignal --force");
-    println!("To enable push notifications, you need to reinstall rustysignal using 'cargo install rustysignal --features 'ssl push' --force");
+    #[cfg(not(feature = "ssl"))]
+    {
+        println!("rustysignal is listening on address");
+        println!("ws://{}", matches.value_of("ADDR").unwrap());
+        println!("To use SSL you need to reinstall rustysignal using 'cargo install rustysignal --features ssl --force");
+        #[cfg(not(feature = "push"))]
+        {
+            println!("To enable push notifications, you need to reinstall rustysignal using 'cargo install rustysignal --features push --force");
+            println!("For both, please reinstall using 'cargo install rustysignal --features 'ssl push' --force");
+        }
+    }
+
+    #[cfg(feature = "ssl")]
+    {
+        println!("rustysignal is listening on securily on address");
+        println!("wss://{}", matches.value_of("ADDR").unwrap());
+        println!("To disable SSL you need to reinstall rustysignal using 'cargo install rustysignal --force");
+        #[cfg(not(feature = "push"))]
+        println!("To enable push notifications, you need to reinstall rustysignal using 'cargo install rustysignal --features 'ssl push' --force");
+    }
     println!("-------------------------------------");
-    
+
     let network = Rc::new(RefCell::new(Network::default()));
 
     #[cfg(feature = "push")]
     network.borrow_mut().set_vapid_path(matches.value_of("VAPIDKEY").unwrap());
 
+
+    #[cfg(feature = "ssl")]
+    let encrypt_server = true;
+    #[cfg(not(feature = "ssl"))]
+    let encrypt_server = false;
+
     ws::Builder::new()
         .with_settings(ws::Settings {
-            encrypt_server: true,
+            encrypt_server: encrypt_server,
             ..ws::Settings::default()
         })
-        .build(|sender: ws::Sender| {
-            println!("Building server");
-            let node = Node::new(sender);
-            Server {
-                node: Rc::new(RefCell::new(node)),
-                ssl: acceptor.clone(),
-                network: network.clone()
-            }
-        })
-        .unwrap().listen(matches.value_of("ADDR").unwrap())
-    .unwrap();
+    .build(|sender: ws::Sender| {
+        println!("Building server");
+        let node = Node::new(sender);
+        Server {
+            node: Rc::new(RefCell::new(node)),
+            #[cfg(feature = "ssl")]
+            ssl: acceptor.clone(),
+            network: network.clone()
+        }
+    })
+    .unwrap().listen(matches.value_of("ADDR").unwrap())
+        .unwrap();
 }
